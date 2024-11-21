@@ -1,16 +1,11 @@
-const OpenAI = require('openai');
-const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
+const axios = require('axios');
 const FormData = require('form-data');
+const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
 
 exports.handler = async (event) => {
   const corsHeaders = {
@@ -40,7 +35,6 @@ exports.handler = async (event) => {
     }
 
     // Extract file path from audio_url
-    // audio_url format: https://<bucket>.supabase.co/storage/v1/object/public/recordings/<user_id>/<recording_id>.webm
     const urlParts = recording.audio_url.split('/');
     const filePath = `${urlParts[urlParts.length - 2]}/${urlParts[urlParts.length - 1]}`;
 
@@ -59,36 +53,30 @@ exports.handler = async (event) => {
     }
 
     // Create FormData
-    const formData = new FormData();
-    formData.append('file', audioData, {
+    const form = new FormData();
+    form.append('file', audioData, {
       filename: 'audio.webm',
       contentType: 'audio/webm'
     });
-    formData.append('model', 'whisper-1');
+    form.append('model', 'whisper-1');
 
     // Make request to OpenAI API
-    const openaiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...formData.getHeaders()
-      },
-      body: formData
-    });
-
-    if (!openaiResponse.ok) {
-      const error = await openaiResponse.json();
-      console.error('OpenAI API Error:', error);
-      throw new Error(error.error?.message || 'Transcription failed');
-    }
-
-    const transcription = await openaiResponse.json();
+    const response = await axios.post(
+      'https://api.openai.com/v1/audio/transcriptions',
+      form,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          ...form.getHeaders()
+        }
+      }
+    );
 
     // Update recording with transcription
     const { error: updateError } = await supabase
       .from('recordings')
       .update({
-        transcript: transcription.text,
+        transcript: response.data.text,
         status: 'completed'
       })
       .eq('id', recording_id);
@@ -131,7 +119,9 @@ exports.handler = async (event) => {
         ...corsHeaders,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ 
+        error: error.response?.data?.error?.message || error.message 
+      })
     };
   }
 };
