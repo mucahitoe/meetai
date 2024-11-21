@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const FormData = require('form-data');
+const { Readable } = require('stream');
 
 // Initialize Supabase client with error checking
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
@@ -23,6 +24,16 @@ if (!openaiKey) {
 const openai = new OpenAI({
   apiKey: openaiKey
 });
+
+// Convert buffer to stream
+function bufferToStream(buffer) {
+  return new Readable({
+    read() {
+      this.push(buffer);
+      this.push(null);
+    }
+  });
+}
 
 exports.handler = async (event) => {
   // CORS headers for all responses
@@ -74,18 +85,21 @@ exports.handler = async (event) => {
 
     // Get audio data as buffer
     const audioBuffer = await response.buffer();
+    const audioStream = bufferToStream(audioBuffer);
 
     // Create transcription using OpenAI
     const transcription = await openai.audio.transcriptions.create({
-      file: new Blob([audioBuffer], { type: 'audio/webm' }),
-      model: 'whisper-1'
+      file: audioStream,
+      model: 'whisper-1',
+      response_format: 'text',
+      filename: 'audio.webm'
     });
 
     // Update recording with transcription
     const { error: updateError } = await supabase
       .from('recordings')
       .update({
-        transcript: transcription.text,
+        transcript: transcription,
         status: 'completed'
       })
       .eq('id', recording_id);
@@ -99,7 +113,7 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({
         success: true,
-        transcript: transcription.text
+        transcript: transcription
       })
     };
 
