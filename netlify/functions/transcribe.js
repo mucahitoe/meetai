@@ -1,7 +1,7 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
 const FormData = require('form-data');
+const fetch = require('node-fetch');
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -29,21 +29,13 @@ exports.handler = async (event) => {
 
     if (recordingError) throw new Error('Recording not found');
 
-    // Update status to processing
-    await supabase
-      .from('recordings')
-      .update({ status: 'processing' })
-      .eq('id', recording_id);
-
     // Fetch audio file
     const response = await fetch(recording.audio_url);
     if (!response.ok) throw new Error('Failed to fetch audio file');
     
-    const audioBuffer = await response.buffer();
-
-    // Create form data for OpenAI API
+    const buffer = await response.buffer();
     const formData = new FormData();
-    formData.append('file', audioBuffer, {
+    formData.append('file', buffer, {
       filename: 'audio.webm',
       contentType: 'audio/webm'
     });
@@ -68,6 +60,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      },
       body: JSON.stringify({ success: true })
     };
 
@@ -92,6 +88,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      },
       body: JSON.stringify({ error: error.message })
     };
   }
