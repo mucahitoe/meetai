@@ -1,7 +1,7 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
-const FormData = require('form-data');
 const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -14,7 +14,14 @@ const openai = new OpenAI({
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+    return { 
+      statusCode: 405, 
+      body: 'Method Not Allowed',
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    };
   }
 
   try {
@@ -32,7 +39,7 @@ exports.handler = async (event) => {
     // Fetch audio file
     const response = await fetch(recording.audio_url);
     if (!response.ok) throw new Error('Failed to fetch audio file');
-    
+
     const buffer = await response.buffer();
     const formData = new FormData();
     formData.append('file', buffer, {
@@ -43,7 +50,7 @@ exports.handler = async (event) => {
 
     // Create transcription
     const transcription = await openai.audio.transcriptions.create({
-      file: formData.get('file'),
+      file: buffer,
       model: 'whisper-1'
     });
 
@@ -60,11 +67,11 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
+      body: JSON.stringify({ success: true }),
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type'
-      },
-      body: JSON.stringify({ success: true })
+      }
     };
 
   } catch (error) {
@@ -88,11 +95,11 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type'
-      },
-      body: JSON.stringify({ error: error.message })
+      }
     };
   }
 };
