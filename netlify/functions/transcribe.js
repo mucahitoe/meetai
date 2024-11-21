@@ -3,29 +3,57 @@ const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const FormData = require('form-data');
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Initialize Supabase client with error checking
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Initialize OpenAI client with error checking
+const openaiKey = process.env.OPENAI_API_KEY;
+
+if (!openaiKey) {
+  throw new Error('Missing OpenAI API key');
+}
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+  apiKey: openaiKey
 });
 
 exports.handler = async (event) => {
+  // CORS headers for all responses
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Type': 'application/json'
+  };
+
+  // Handle preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers
+    };
+  }
+
   if (event.httpMethod !== 'POST') {
-    return { 
-      statusCode: 405, 
-      body: 'Method Not Allowed',
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      }
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
 
   try {
     const { recording_id } = JSON.parse(event.body);
+
+    if (!recording_id) {
+      throw new Error('Recording ID is required');
+    }
 
     // Get recording from Supabase
     const { data: recording, error: recordingError } = await supabase
@@ -34,23 +62,22 @@ exports.handler = async (event) => {
       .eq('id', recording_id)
       .single();
 
-    if (recordingError) throw new Error('Recording not found');
+    if (recordingError || !recording) {
+      throw new Error('Recording not found');
+    }
 
-    // Fetch audio file
+    // Download audio file
     const response = await fetch(recording.audio_url);
-    if (!response.ok) throw new Error('Failed to fetch audio file');
+    if (!response.ok) {
+      throw new Error('Failed to fetch audio file');
+    }
 
-    const buffer = await response.buffer();
-    const formData = new FormData();
-    formData.append('file', buffer, {
-      filename: 'audio.webm',
-      contentType: 'audio/webm'
-    });
-    formData.append('model', 'whisper-1');
+    // Get audio data as buffer
+    const audioBuffer = await response.buffer();
 
-    // Create transcription
+    // Create transcription using OpenAI
     const transcription = await openai.audio.transcriptions.create({
-      file: buffer,
+      file: new Blob([audioBuffer], { type: 'audio/webm' }),
       model: 'whisper-1'
     });
 
@@ -63,21 +90,23 @@ exports.handler = async (event) => {
       })
       .eq('id', recording_id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      throw updateError;
+    }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true }),
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      }
+      headers,
+      body: JSON.stringify({
+        success: true,
+        transcript: transcription.text
+      })
     };
 
   } catch (error) {
     console.error('Transcription error:', error);
 
-    // Update error status if we have a recording_id
+    // Update recording status to error
     if (event.body) {
       try {
         const { recording_id } = JSON.parse(event.body);
@@ -95,11 +124,10 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      }
+      headers,
+      body: JSON.stringify({
+        error: error.message || 'Internal server error'
+      })
     };
   }
 };

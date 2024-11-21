@@ -20,7 +20,8 @@
     "zustand": "^4.5.2",
     "openai": "^4.28.0",
     "node-fetch": "^2.7.0",
-    "form-data": "^4.0.0"
+    "form-data": "^4.0.0",
+    "blob-polyfill": "^7.0.20220408"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
