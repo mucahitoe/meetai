@@ -4,11 +4,11 @@ const fetch = require('node-fetch');
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 const openai = new OpenAI({
-  apiKey: 'sk-proj-73TZroX9zgbcgwKoPjY8mm34WhgbhgsRmKoV0sLTsUg8cFl_wnXf9zIlSuGmBxdyFgRInMdOLXT3BlbkFJAmns9J5-k24fwGGuX8umhtcJXob2WriiX64U4usq3NXS8nYUJSyplLc1GztpKY5tIA3qiq13YAok'
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 exports.handler = async (event) => {
