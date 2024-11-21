@@ -1,8 +1,6 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
-const FormData = require('form-data');
-const { Blob } = require('blob-polyfill');
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL,
@@ -43,30 +41,20 @@ exports.handler = async (event) => {
       throw new Error('Failed to fetch audio file');
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const blob = new Blob([arrayBuffer], { type: 'audio/webm' });
+    // Get the audio data as a buffer
+    const audioBuffer = await response.buffer();
 
-    // Create FormData and append file
-    const formData = new FormData();
-    formData.append('file', blob, 'audio.webm');
-    formData.append('model', 'whisper-1');
+    // Create a file object that OpenAI's API can understand
+    const file = {
+      buffer: audioBuffer,
+      name: 'audio.webm'
+    };
 
-    // Make direct API call to OpenAI
-    const openaiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...formData.getHeaders()
-      },
-      body: formData
+    // Use OpenAI's SDK to create transcription
+    const transcription = await openai.audio.transcriptions.create({
+      file: file,
+      model: 'whisper-1'
     });
-
-    if (!openaiResponse.ok) {
-      const error = await openaiResponse.json();
-      throw new Error(error.error?.message || 'Transcription failed');
-    }
-
-    const transcription = await openaiResponse.json();
 
     // Update recording with transcription
     const { error: updateError } = await supabase
